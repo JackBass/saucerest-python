@@ -171,7 +171,7 @@ class SauceClient:
             return False
 
         if data:
-            return data.startswith("SSH-2.0-")
+            return data.startswith("SSH-")
         else:
             logger.error("Got unexpected data from SSH server: '%s'" % data)
             return False

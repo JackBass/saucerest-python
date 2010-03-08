@@ -23,19 +23,12 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import time
-import struct
-import sys
-import os
 import logging
 
-from twisted.conch.ssh import (connection, channel,
-                               userauth, keys, common,
-                               transport, forwarding)
 from twisted.internet import defer, protocol, reactor, task
-from twisted.internet.task import LoopingCall
-
-import saucerest
+from twisted.conch.error import ConchError
+from twisted.conch.ssh import (
+    connection, channel, userauth, transport, forwarding)
 
 logger = logging.getLogger(__name__)
 
@@ -262,15 +255,15 @@ def connect_tunnel(tunnel_id,
             connected_callback()
 
     for (local_port, remote_port) in ports:
-        d = protocol.ClientCreator(reactor,
-                                   TunnelTransport,
-                                   username,
-                                   access_key,
-                                   local_host,
-                                   local_port,
-                                   remote_port,
-                                   check_n_call,
-                                   diagnostic).connectTCP(remote_host, 22)
+        protocol.ClientCreator(reactor,
+                               TunnelTransport,
+                               username,
+                               access_key,
+                               local_host,
+                               local_port,
+                               remote_port,
+                               check_n_call,
+                               diagnostic).connectTCP(remote_host, 22)
 
     reactor.addSystemEventTrigger("before", "shutdown", shutdown_callback)
 

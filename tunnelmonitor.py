@@ -85,7 +85,10 @@ def get_new_tunnel(sauce_client, domains):
             if tried >= max_tries:
                 logger.error("Exiting: Could not launch tunnel"
                              " (tried %d times)" % tried)
-                sys.exit(1)
+                if reactor.running:
+                    reactor.stop()
+                else:
+                    sys.exit(1)
             time.sleep(RETRY_TIME)
             tunnel = None
         else:

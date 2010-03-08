@@ -22,11 +22,11 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import sys
 import pprint
+from optparse import OptionParser
+
 import saucerest
 
-from optparse import OptionParser
 
 usage = "usage: %prog [options] <username> <access key> <local host> <local \
 port> <remote port> <remote domain> [<remote domain>...]"

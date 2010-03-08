@@ -23,9 +23,9 @@
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import sys
+import logging
 import re
 import socket
-import logging
 from optparse import OptionParser
 
 import daemon
@@ -35,8 +35,7 @@ import saucerest
 import sshtunnel
 from tunnelmonitor import get_new_tunnel, heartbeat
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tunnel")
 
 tunnel_id = None
 
@@ -82,6 +81,16 @@ def _parse_options():
     return options, args, ports
 
 
+def _setup_logging(logfile=None):
+    if logfile:
+        print "Sending messages to %s" % logfile
+        phormat = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        logging.basicConfig(level=logging.DEBUG, format=phormat,
+                            filename=logfile)
+    else:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
 def run_diagnostic(domains, ports, local_host):
     errors = []
 
@@ -104,12 +113,11 @@ def run_diagnostic(domains, ports, local_host):
                           % (local_host, pair[0], port_error))
 
     if errors == []:
-        print "No errors found, proceeding"
+        logger.info("Diagnostic: No errors found")
         return
     else:
-        print "Errors found:"
         for err in errors:
-            print "\t%s" % err
+            logger.error("Diagnostic: %s" % err)
         sys.exit(1)
 
 
@@ -142,16 +150,17 @@ def main(options, args, ports):
     sauce_client = saucerest.SauceClient(name=username, access_key=access_key,
                                          base_url=options.base_url)
     if sauce_client.get_tunnel("test-authorized")['error'] == 'Unauthorized':
-        print "Error: User/access-key combination is incorrect"
+        logger.error("Exiting: Incorrect username or access key")
         sys.exit(1)
 
     if options.shutdown:
-        print "Searching for existing tunnels using requested domains..."
+        logger.info(
+            "Searching for existing tunnels using requested domains ...")
         for tunnel in sauce_client.list_tunnels():
             for domain in (d for d in domains if d in tunnel['DomainNames']):
-                print "tunnel %s is currenty using requested domain %s" % (
-                      tunnel['_id'], domain)
-                print "shutting down tunnel %s" % tunnel['_id']
+                logger.warning("Tunnel %s is currenty using requested"
+                               " domain %s" % (tunnel['_id'], domain))
+                logger.info("Shutting down tunnel %s" % tunnel['_id'])
                 sauce_client.delete_tunnel(tunnel['_id'])
 
 
@@ -170,10 +179,11 @@ def main(options, args, ports):
                   tunnel_id, tunnel_change_callback)
         reactor.run()
     finally:
-        print "Aborted -- shutting down tunnel machine"
+        logger.warning("Exiting")
         sauce_client.delete_tunnel(tunnel_id)
 
 
 if __name__ == '__main__':
     options, args, ports = _parse_options()
+    _setup_logging(options.logfile)
     main(options, args, ports)

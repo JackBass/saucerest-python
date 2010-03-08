@@ -27,13 +27,18 @@ import time
 import struct
 import sys
 import os
-import saucerest
+import logging
 
 from twisted.conch.ssh import (connection, channel,
                                userauth, keys, common,
                                transport, forwarding)
 from twisted.internet import defer, protocol, reactor, task
 from twisted.internet.task import LoopingCall
+
+import saucerest
+
+logger = logging.getLogger(__name__)
+
 
 class TunnelTransport(transport.SSHClientTransport):
 
@@ -155,24 +160,27 @@ class TunnelConnection(connection.SSHConnection):
         d = self.sendGlobalRequest('tcpip-forward',
                                    data,
                                    wantReply=1)
-        print('requesting remote forwarding %s=>%s:%s' %(remotePort, hostport[0],hostport[1]))
+        logger.info("requesting remote forwarding %s=>%s:%s"
+                    % (remotePort, hostport[0], hostport[1]))
         d.addCallback(self._cbRemoteForwarding, remotePort, hostport)
         d.addErrback(self._ebRemoteForwarding, remotePort, hostport)
 
     def _cbRemoteForwarding(self, result, remotePort, hostport):
-        print('accepted remote forwarding %s=>%s:%s' %(remotePort, hostport[0],hostport[1]))
+        logger.info("accepted remote forwarding %s=>%s:%s"
+                    % (remotePort, hostport[0],hostport[1]))
         self.remoteForwards[remotePort] = hostport
         if self.connected_callback:
             self.connected_callback()
 
     def _ebRemoteForwarding(self, f, remotePort, hostport):
-        print('remote forwarding %s=>%s:%s failed' %(remotePort, hostport[0],hostport[1]))
-        print(f)
+        logger.error("remote forwarding %s=>%s:%s failed"
+                     % (remotePort, hostport[0], hostport[1]))
+        logger.error(f)
 
     def cancelRemoteForwarding(self, remotePort):
         data = forwarding.packGlobal_tcpip_forward(('0.0.0.0', remotePort))
         self.sendGlobalRequest('cancel-tcpip-forward', data)
-        print('cancelling remote forwarding %s' % remotePort)
+        logger.warning("cancelling remote forwarding %s" % remotePort)
         try:
             del self.remoteForwards[remotePort]
         except:
@@ -180,14 +188,14 @@ class TunnelConnection(connection.SSHConnection):
 
     def channel_forwarded_tcpip(self, winSize, maxP, data):
         if self.diagnostic:
-            print('FTCP %s' % repr(data))
+            logger.info("FTCP %s" % repr(data))
         remoteHP, origHP = forwarding.unpackOpen_forwarded_tcpip(data)
         if self.diagnostic:
-            print(remoteHP)
+            logger.info(remoteHP)
         if remoteHP[1] in self.remoteForwards:
             connectHP = self.remoteForwards[remoteHP[1]]
             if self.diagnostic:
-                print('connect forwarding ', connectHP)
+                logger.info("connect forwarding %s" % connectHP)
             return forwarding.SSHConnectForwardingChannel(connectHP,
                                                           remoteWindow=winSize,
                                                           remoteMaxPacket=maxP,
@@ -198,10 +206,10 @@ class TunnelConnection(connection.SSHConnection):
 
     def channelClosed(self, channel):
         if self.diagnostic:
-            print('connection closing %s' % channel)
-            print(self.channels)
+            logger.info("connection closing %s" % channel)
+            logger.info(self.channels)
         if len(self.channels) == 1: # just us left
-            print('stopping connection to a closed tunnel')
+            logger.warning("stopping connection to a closed tunnel")
             try:
                 #dont stop reactor when one connection is closed
                 self.__class__.__bases__[0].channelClosed(self, channel)
@@ -217,18 +225,18 @@ class NullChannel(channel.SSHChannel):
     name = 'session'
 
     def openFailed(self, reason):
-        print 'NullChannel open failed', reason
+        logger.error("NullChannel open failed: %s" % reason)
 
     def channelOpen(self, ignoredData):
         return
 
     def closeReceived(self):
-        print('remote side closed %s' % self)
+        logger.info("remote side closed %s" % self)
         self.conn.sendClose(self)
 
     def closed(self):
         global old
-        print('closing channel')
+        logger.info("closing channel")
 
 """
 Tunnel handling:

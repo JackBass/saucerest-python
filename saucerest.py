@@ -22,14 +22,14 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import sys
 import time
 import httplib2
 import urllib
 import socket
+import logging
+
 import simplejson  # http://cheeseshop.python.org/pypi/simplejson
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -163,17 +163,17 @@ class SauceClient:
             sock.connect((host, port))
             data = sock.recv(4096)
         except socket.timeout:
-            logger.debug("Socket timed out trying to connect to gravina")
+            logger.warning("Socket timed out trying to connect to gravina")
             return False
         except socket.error as err:
-            logger.debug("Socket error when trying to connect to gravina: %s"
+            logger.error("Socket error when trying to connect to gravina: %s"
                          % err)
             return False
 
         if data:
             return data.startswith("SSH-2.0-Twisted")
         else:
-            logger.debug("Got unexpected data from gravina: '%s'" % data)
+            logger.error("Got unexpected data from gravina: '%s'" % data)
             return False
 
 

@@ -165,7 +165,7 @@ class SauceClient:
         except socket.timeout:
             logger.warning("Socket timed out trying to connect to gravina")
             return False
-        except socket.error as err:
+        except socket.error, err:
             logger.error("Socket error when trying to connect to gravina: %s"
                          % err)
             return False

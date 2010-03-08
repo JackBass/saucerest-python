@@ -22,56 +22,82 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import sys
 import time
-import saucerest
+import logging
 
 from twisted.internet import reactor
 
-def heartbeat(name, key, base_url, tunnel_id, update_callback):
-    sauce = saucerest.SauceClient(name, key, base_url)
-    if sauce.is_tunnel_up(tunnel_id):
-        reactor.callLater(5, heartbeat, name, key, base_url, tunnel_id, update_callback)
-    else:
-        tunnel_settings = sauce.get_tunnel(tunnel_id)
-        if tunnel_settings.get('UserShutDown'):
-                print "Tunnel shutting down on user request"
-                return
-        print "Tunnel is down, booting new tunnel"
-        sauce.delete_tunnel(tunnel_id)
-        building_tunnel = True
-        while building_tunnel:
-            new_tunnel = sauce.create_tunnel({'DomainNames': tunnel_settings['DomainNames']})
-            while 'error' in new_tunnel:
-                #if tunnels die when you try to create them (flakey tunnels)
-                print "Error: %s" % new_tunnel['error']
-                time.sleep(5)
-                new_tunnel = sauce.create_tunnel({'DomainNames': tunnel_settings['DomainNames']})
-            try:
-                interval = 5
-                timeout = 600
-                t = 0
-                last_st = ""
-                while t < timeout:
-                    #wait for tunnel to be useable
-                    tunnel = sauce.get_tunnel(new_tunnel['id'])
-                    if tunnel['Status'] != last_st:
-                        last_st = tunnel['Status']
-                        print "Status: %s" % tunnel['Status']
-                    if tunnel['Status'] == 'terminated':
-                        #if the tunnel flakes out
-                        sauce.delete_tunnel(new_tunnel['id'])
-                        break
-                    if tunnel['Status'] == 'running':
-                        building_tunnel = False
-                        break
-                    time.sleep(interval)
-                    t += interval
-                else:
-                    raise Exception("Timed out")
-            finally:
-                print "replacement aborted -- shutting down replacement tunnel machine"
-                sauce.delete_tunnel(new_tunnel['id'])
+import saucerest
 
+TIMEOUT = 600
+RETRY_TIME = 5
+logger = logging.getLogger(__name__)
+
+
+def _get_running_tunnel(sauce_client, tunnel_id):
+    """
+    Wait up to TIMEOUT seconds for tunnel to have "running" status. Return
+    running tunnel or None if timeout is reached.
+    """
+    last_status = None
+    for _ in xrange(TIMEOUT / RETRY_TIME):
+        tunnel = sauce_client.get_tunnel(tunnel_id)
+
+        if tunnel['Status'] != last_status:
+            print "Status: %s" % tunnel['Status']
+            last_status = tunnel['Status']
+
+        if tunnel['Status'] == "running":
+            return tunnel
+        elif tunnel['Status'] == 'terminated':
+            logger.warning("Tunnel is terminated")
+            sauce_client.delete_tunnel(tunnel['id'])
+            return None
+        time.sleep(RETRY_TIME)
+
+    logger.warning("Timed out after waiting ~%ds for running tunnel" % TIMEOUT)
+    return None
+
+
+def get_new_tunnel(sauce_client, domains):
+    max_tries = 5
+    tunnel = None
+    tried = 0
+    while not tunnel:
+        print "Launching tunnel ... (try #%d)" % (tried + 1)
+        tunnel = sauce_client.create_tunnel({'DomainNames': domains})
+        tried += 1
+        if 'error' in tunnel:
+            print "Error: %s" % tunnel['error']
+            if tried >= max_tries:
+                print "Could not launch tunnel (tried %d times)"
+                sys.exit(1)
+            time.sleep(RETRY_TIME)
+            tunnel = None
+        else:
+            tunnel = _get_running_tunnel(sauce_client, tunnel['id'])
+
+    print "Tunnel ID: %s" % tunnel['id']
+    return tunnel
+
+
+def heartbeat(name, key, base_url, tunnel_id, update_callback):
+    sauce_client = saucerest.SauceClient(name, key, base_url)
+    if sauce_client.is_tunnel_healthy(tunnel_id):
+        reactor.callLater(RETRY_TIME, heartbeat, name, key, base_url,
+                          tunnel_id, update_callback)
+    else:
+        tunnel_settings = sauce_client.get_tunnel(tunnel_id)
+        if 'UserShutDown' in tunnel_settings:
+            print "Tunnel shutting down on user request"
+            return
+        print "Tunnel is down"
+        sauce_client.delete_tunnel(tunnel_id)
+
+        print "Replacing down tunnel"
+        new_tunnel = get_new_tunnel(
+            sauce_client, tunnel_settings['DomainNames'])
         if update_callback:
-            new_tunnel = sauce.get_tunnel(new_tunnel['id'])
+            new_tunnel = sauce_client.get_tunnel(new_tunnel['id'])
             update_callback(new_tunnel)

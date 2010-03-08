@@ -29,6 +29,9 @@ import urllib
 import socket
 import simplejson  # http://cheeseshop.python.org/pypi/simplejson
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class SauceClient:
     """Basic wrapper class for operations with Sauce"""
@@ -150,7 +153,7 @@ class SauceClient:
 
     # -- Tunnel utilities
 
-    def _is_host_ssh_up(self, host, port=22, timeout=10):
+    def _is_gravina_up(self, host, port=22, timeout=10):
         """Return whether we receive the Twisted SSH string from the host."""
         socket.setdefaulttimeout(timeout)  # timeout in secs
 
@@ -160,17 +163,25 @@ class SauceClient:
             sock.connect((host, port))
             data = sock.recv(4096)
         except socket.timeout:
+            logger.debug("Socket timed out trying to connect to gravina")
+            return False
+        except socket.error as err:
+            logger.debug("Socket error when trying to connect to gravina: %s"
+                         % err)
             return False
 
         if data:
             return data.startswith("SSH-2.0-Twisted")
         else:
+            logger.debug("Got unexpected data from gravina: '%s'" % data)
             return False
 
 
-    def is_tunnel_up(self, tunnel_id):
-        """Return whether a tunnel machine is up and running."""
+    def is_tunnel_healthy(self, tunnel_id):
+        """Return whether a tunnel connection is considered healthy."""
         tunnel = self.get_tunnel(tunnel_id)
         if tunnel['Status'] != 'running':
+            logger.debug(
+                "Tunnel has non-running status '%s'" % tunnel['Status'])
             return False
-        return self._is_host_ssh_up(tunnel['Host'])
+        return self._is_gravina_up(tunnel['Host'])

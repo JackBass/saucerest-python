@@ -168,7 +168,7 @@ class TunnelConnection(connection.SSHConnection):
     def _ebRemoteForwarding(self, f, remotePort, hostport):
         logger.error("remote forwarding %s=>%s:%s failed"
                      % (remotePort, hostport[0], hostport[1]))
-        logger.error(f)
+        logger.error(str(f))
 
     def cancelRemoteForwarding(self, remotePort):
         data = forwarding.packGlobal_tcpip_forward(('0.0.0.0', remotePort))

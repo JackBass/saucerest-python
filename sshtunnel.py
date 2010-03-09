@@ -181,14 +181,14 @@ class TunnelConnection(connection.SSHConnection):
 
     def channel_forwarded_tcpip(self, winSize, maxP, data):
         if self.diagnostic:
-            logger.info("FTCP %s" % repr(data))
+            logger.debug("FTCP %s" % repr(data))
         remoteHP, origHP = forwarding.unpackOpen_forwarded_tcpip(data)
         if self.diagnostic:
-            logger.info(str(remoteHP))
+            logger.debug(str(remoteHP))
         if remoteHP[1] in self.remoteForwards:
             connectHP = self.remoteForwards[remoteHP[1]]
             if self.diagnostic:
-                logger.info("connect forwarding %s" % connectHP)
+                logger.debug("connect forwarding %s" % str(connectHP))
             return forwarding.SSHConnectForwardingChannel(connectHP,
                                                           remoteWindow=winSize,
                                                           remoteMaxPacket=maxP,
@@ -199,8 +199,8 @@ class TunnelConnection(connection.SSHConnection):
 
     def channelClosed(self, channel):
         if self.diagnostic:
-            logger.info("connection closing %s" % channel)
-            logger.info(str(self.channels))
+            logger.debug("connection closing %s" % channel)
+            logger.debug(str(self.channels))
         if len(self.channels) == 1: # just us left
             logger.warning("stopping connection to a closed tunnel")
             try:

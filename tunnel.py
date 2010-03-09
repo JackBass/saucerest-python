@@ -81,14 +81,14 @@ def _parse_options():
     return options, args, ports
 
 
-def _setup_logging(logfile=None):
+def _setup_logging(logfile=None, diagnostic=False):
+    loglevel = (logging.INFO, logging.DEBUG)[bool(diagnostic)]
     if logfile:
         print "Sending messages to %s" % logfile
-        phormat = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        logging.basicConfig(level=logging.DEBUG, format=phormat,
-                            filename=logfile)
+        phormat = "%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s"
+        logging.basicConfig(level=loglevel, format=phormat, filename=logfile)
     else:
-        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        logging.basicConfig(level=loglevel, format="%(message)s")
 
 
 def run_diagnostic(domains, ports, local_host):
@@ -113,7 +113,7 @@ def run_diagnostic(domains, ports, local_host):
                           % (local_host, pair[0], port_error))
 
     if errors == []:
-        logger.info("Diagnostic: No errors found")
+        logger.debug("No errors found in diagnostic check")
         return
     else:
         for err in errors:
@@ -185,5 +185,5 @@ def main(options, args, ports):
 
 if __name__ == '__main__':
     options, args, ports = _parse_options()
-    _setup_logging(options.logfile)
+    _setup_logging(options.logfile, options.diagnostic)
     main(options, args, ports)

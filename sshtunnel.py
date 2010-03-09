@@ -184,7 +184,7 @@ class TunnelConnection(connection.SSHConnection):
             logger.info("FTCP %s" % repr(data))
         remoteHP, origHP = forwarding.unpackOpen_forwarded_tcpip(data)
         if self.diagnostic:
-            logger.info(remoteHP)
+            logger.info(str(remoteHP))
         if remoteHP[1] in self.remoteForwards:
             connectHP = self.remoteForwards[remoteHP[1]]
             if self.diagnostic:
@@ -200,7 +200,7 @@ class TunnelConnection(connection.SSHConnection):
     def channelClosed(self, channel):
         if self.diagnostic:
             logger.info("connection closing %s" % channel)
-            logger.info(self.channels)
+            logger.info(str(self.channels))
         if len(self.channels) == 1: # just us left
             logger.warning("stopping connection to a closed tunnel")
             try:

@@ -149,6 +149,7 @@ def main(options, args, ports):
 
     sauce_client = saucerest.SauceClient(name=username, access_key=access_key,
                                          base_url=options.base_url)
+
     if sauce_client.get_tunnel("test-authorized")['error'] == 'Unauthorized':
         logger.error("Exiting: Incorrect username or access key")
         sys.exit(1)

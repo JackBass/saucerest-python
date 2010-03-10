@@ -53,6 +53,8 @@ def _get_running_tunnel(sauce_client, tunnel_id):
     last_status = None
     for _ in xrange(TIMEOUT / RETRY_TIME):
         tunnel = sauce_client.get_tunnel(tunnel_id)
+        assert tunnel['id'] == tunnel_id, \
+            "Tunnel info should have same ID as the one requested"
 
         if tunnel['Status'] != last_status:
             logger.info("Status: %s" % tunnel['Status'])
@@ -62,7 +64,7 @@ def _get_running_tunnel(sauce_client, tunnel_id):
             return tunnel
         elif tunnel['Status'] == 'terminated':
             if 'UserShutDown' in tunnel:
-                _do_user_shutdown(sauce_client, tunnel_id)
+                _do_user_shutdown(sauce_client, tunnel['id'])
             logger.warning("Tunnel is terminated")
             sauce_client.delete_tunnel(tunnel['id'])
             return None
@@ -77,8 +79,13 @@ def get_new_tunnel(sauce_client, domains):
     tunnel = None
     tried = 0
     while not tunnel:
-        logger.info("Launching tunnel ... (try #%d)" % (tried + 1))
-        tunnel = sauce_client.create_tunnel({'DomainNames': domains})
+        trymsg=("", " (try #%d)" % (tried + 1))[bool(tried)]
+        logger.info("Launching tunnel ...%s" % trymsg)
+        try:
+            tunnel = sauce_client.create_tunnel({'DomainNames': domains})
+        except saucerest.SauceRestError, e:
+            tunnel = dict(
+                error="Unable to connect to REST interface: %s" % str(e))
         tried += 1
         if 'error' in tunnel:
             logger.warning("Tunnel error: %s" % tunnel['error'])
@@ -92,9 +99,13 @@ def get_new_tunnel(sauce_client, domains):
             time.sleep(RETRY_TIME)
             tunnel = None
         else:
-            tunnel = _get_running_tunnel(sauce_client, tunnel['id'])
+            try:
+                tunnel = _get_running_tunnel(sauce_client, tunnel['id'])
+            except saucerest.SauceRestError:
+                logger.error("Created tunnel, but could not retrieve info")
+                tunnel = None
 
-
+    logger.info("Tunnel host: %s" % tunnel['Host'])
     logger.info("Tunnel ID: %s" % tunnel['id'])
     return tunnel
 
@@ -105,13 +116,21 @@ def heartbeat(name, key, base_url, tunnel_id, update_callback):
         reactor.callLater(RETRY_TIME, heartbeat, name, key, base_url,
                           tunnel_id, update_callback)
     else:
-        tunnel = sauce_client.get_tunnel(tunnel_id)
+        try:
+            tunnel = sauce_client.get_tunnel(tunnel_id)
+        except saucerest.SauceRestError, e:
+            logger.critical("Unable to connect to REST interface at %s: %s"
+                            % (base_url, e))
+            if reactor.running:
+                reactor.stop()
+            sys.exit(1)
+
         if 'UserShutDown' in tunnel:
             _do_user_shutdown(sauce_client, tunnel_id)
             return
+
         logger.info("Tunnel is down")
         sauce_client.delete_tunnel(tunnel_id)
-
         logger.info("Replacing tunnel")
         new_tunnel = get_new_tunnel(sauce_client, tunnel['DomainNames'])
 

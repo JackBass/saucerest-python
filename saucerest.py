@@ -33,6 +33,10 @@ import simplejson  # http://cheeseshop.python.org/pypi/simplejson
 logger = logging.getLogger(__name__)
 
 
+class SauceRestError(Exception):
+    pass
+
+
 class SauceClient:
     """Basic wrapper class for operations with Sauce"""
 
@@ -50,6 +54,18 @@ class SauceClient:
         self.SLEEP_INTERVAL = 5   # in seconds
         self.TIMEOUT = 300  # TIMEOUT/60 = number of minutes before timing out
 
+    def _http_request(self, uri, method, **keywords):
+        """Wrap the HTTP request up so we get reasonable error handling."""
+        try:
+            return self.http.request(uri, method, **keywords)
+        except (httplib2.ServerNotFoundError, socket.error), e:
+            raise SauceRestError(
+                "HTTP request failed for %s: %s" % (self.base_url, e))
+        except AttributeError:
+            # httplib2 errors suck
+            raise SauceRestError("HTTP request failed for %s (httplib2"
+                " maybe couldn't create socket/connection)" % self.base_url)
+
     def get(self, type, doc_id, **kwargs):
         headers = {"Content-Type": "application/json"}
         attachment = ""
@@ -64,7 +80,7 @@ class SauceClient:
                                                       doc_id,
                                                       attachment,
                                                       parameters)
-        response, content = self.http.request(url, 'GET', headers=headers)
+        response, content = self._http_request(url, 'GET', headers=headers)
         if attachment:
             return content
         else:
@@ -73,14 +89,14 @@ class SauceClient:
     def list(self, type):
         headers = {"Content-Type": "application/json"}
         url = self.base_url + "/rest/%s/%s" % (self.account_name, type)
-        response, content = self.http.request(url, 'GET', headers=headers)
+        response, content = self._http_request(url, 'GET', headers=headers)
         return simplejson.loads(content)
 
     def create(self, type, body):
         headers = {"Content-Type": "application/json"}
         url = self.base_url + "/rest/%s/%s" % (self.account_name, type)
         body = simplejson.dumps(body)
-        response, content = self.http.request(url,
+        response, content = self._http_request(url,
                                               'POST',
                                               body=body,
                                               headers=headers)
@@ -89,7 +105,7 @@ class SauceClient:
     def attach(self, doc_id, name, body):
         url = self.base_url + "/rest/%s/scripts/%s/%s" % (self.account_name,
                                                           doc_id, name)
-        response, content = self.http.request(url, 'PUT', body=body)
+        response, content = self._http_request(url, 'PUT', body=body)
         return simplejson.loads(content)
 
     def delete(self, type, doc_id):
@@ -97,7 +113,7 @@ class SauceClient:
         url = self.base_url + "/rest/%s/%s/%s" % (self.account_name,
                                                   type,
                                                   doc_id)
-        response, content = self.http.request(url, 'DELETE', headers=headers)
+        response, content = self._http_request(url, 'DELETE', headers=headers)
         return simplejson.loads(content)
 
     #------ Sauce-specific objects ------
@@ -179,7 +195,11 @@ class SauceClient:
 
     def is_tunnel_healthy(self, tunnel_id):
         """Return whether a tunnel connection is considered healthy."""
-        tunnel = self.get_tunnel(tunnel_id)
+        try:
+            tunnel = self.get_tunnel(tunnel_id)
+        except SauceRestError, e:
+            logger.warning("Could not get tunnel info: %s" % e)
+            return False
         if tunnel['Status'] != 'running':
             logger.debug(
                 "Tunnel has non-running status '%s'" % tunnel['Status'])

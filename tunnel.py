@@ -165,19 +165,24 @@ def main(options, args, ports):
                 sauce_client.delete_tunnel(tunnel['_id'])
 
 
+    def disconnected_callback(tunnel_id):
+        logger.warning("tunnel %s disconnected, marking unhealthy", tunnel_id)
+        sauce_client.unhealthy_tunnels.add(tunnel_id)
+
     def tunnel_change_callback(new_tunnel, connected_callback=None):
         global tunnel_id
         tunnel_id = new_tunnel['id']
         sshtunnel.connect_tunnel(
             tunnel_id, sauce_client.base_url, username, access_key, local_host,
             new_tunnel['Host'], ports, connected_callback,
-            lambda: sauce_client.delete_tunnel(tunnel_id), options.diagnostic)
+            lambda: disconnected_callback(tunnel_id),
+            lambda: sauce_client.delete_tunnel(tunnel_id),
+            options.diagnostic)
+        heartbeat(sauce_client, tunnel_id, tunnel_change_callback)
 
     try:
         tunnel = get_new_tunnel(sauce_client, domains)
         connect_tunnel(options, tunnel, tunnel_change_callback)
-        heartbeat(username, access_key, sauce_client.base_url,
-                  tunnel_id, tunnel_change_callback)
         reactor.run()
     finally:
         logger.warning("Exiting")

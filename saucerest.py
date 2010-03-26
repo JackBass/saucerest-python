@@ -46,8 +46,9 @@ class SauceClient:
         if base_url.endswith('/'):
             base_url = base_url[:-1]
         self.base_url = base_url
-        self.http = httplib2.Http(timeout=timeout)
         self.account_name = name
+        self.unhealthy_tunnels = set()
+        self.http = httplib2.Http(timeout=timeout)
         self.http.add_credentials(name, access_key)
 
         # Used for job/batch waiting
@@ -195,6 +196,9 @@ class SauceClient:
 
     def is_tunnel_healthy(self, tunnel_id):
         """Return whether a tunnel connection is considered healthy."""
+        if tunnel_id in self.unhealthy_tunnels:
+            self.unhealthy_tunnels.remove(tunnel_id)
+            return False
         try:
             tunnel = self.get_tunnel(tunnel_id)
         except SauceRestError, e:

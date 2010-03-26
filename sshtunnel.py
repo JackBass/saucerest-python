@@ -42,6 +42,7 @@ class TunnelTransport(transport.SSHClientTransport):
                  forward_port,
                  forward_remote_port,
                  connected_callback=None,
+                 error_callback=None,
                  diagnostic=False):
         try:
             transport.SSHClientTransport.__init__(self)
@@ -53,6 +54,7 @@ class TunnelTransport(transport.SSHClientTransport):
         self.forward_port = forward_port
         self.forward_remote_port = forward_remote_port
         self.connected_callback = connected_callback
+        self.error_callback = error_callback
         self.diagnostic = diagnostic
 
     def verifyHostKey(self, hostKey, fingerprint):
@@ -65,8 +67,21 @@ class TunnelTransport(transport.SSHClientTransport):
                            self.forward_port,
                            self.forward_remote_port,
                            self.connected_callback,
+                           self.error_callback,
                            self.diagnostic),
                            self.password))
+
+    def receiveError(self, reasonCode, description):
+        logger.warning('Got remote error, code %s, reason: %s',
+                       reasonCode, description)
+        if self.error_callback:
+            self.error_callback()
+
+    def connectionLost(self, reason):
+        logger.warning('SSH connection lost, reason: %s',
+                       reason)
+        if self.error_callback:
+            self.error_callback()
 
 
 class TunnelUserAuth(userauth.SSHUserAuthClient):
@@ -128,6 +143,7 @@ class TunnelConnection(connection.SSHConnection):
                  forward_port,
                  forward_remote_port,
                  connected_callback=None,
+                 error_callback=None,
                  diagnostic=False):
         try:
             connection.SSHConnection.__init__(self)
@@ -138,6 +154,7 @@ class TunnelConnection(connection.SSHConnection):
         self.forward_port = forward_port
         self.forward_remote_port = forward_remote_port
         self.connected_callback = connected_callback
+        self.error_callback = error_callback
         self.diagnostic = diagnostic
 
     def serviceStarted(self):
@@ -145,7 +162,7 @@ class TunnelConnection(connection.SSHConnection):
         if hasattr(self.transport, 'sendIgnore'):
             _KeepAlive(self)
         self.requestRemoteForwarding(self.forward_remote_port,
-                                    (self.forward_host, self.forward_port))
+                                     (self.forward_host, self.forward_port))
         self.openChannel(NullChannel())
 
     def requestRemoteForwarding(self, remotePort, hostport):
@@ -203,6 +220,8 @@ class TunnelConnection(connection.SSHConnection):
             logger.debug(str(self.channels))
         if len(self.channels) == 1: # just us left
             logger.warning("stopping connection to a closed tunnel")
+            if self.error_callback:
+                self.error_callback()
             try:
                 #dont stop reactor when one connection is closed
                 self.__class__.__bases__[0].channelClosed(self, channel)
@@ -245,6 +264,7 @@ def connect_tunnel(tunnel_id,
                  remote_host,
                  ports,
                  connected_callback,
+                 error_callback,
                  shutdown_callback,
                  diagnostic):
 
@@ -254,16 +274,22 @@ def connect_tunnel(tunnel_id,
         if open_tunnels >= len(ports) and connected_callback:
             connected_callback()
 
+    def eb(failure):
+        logger.warning(str(failure))
+        if error_callback:
+            error_callback()
     for (local_port, remote_port) in ports:
-        protocol.ClientCreator(reactor,
-                               TunnelTransport,
-                               username,
-                               access_key,
-                               local_host,
-                               local_port,
-                               remote_port,
-                               check_n_call,
-                               diagnostic).connectTCP(remote_host, 22)
+        df = protocol.ClientCreator(reactor,
+                                    TunnelTransport,
+                                    username,
+                                    access_key,
+                                    local_host,
+                                    local_port,
+                                    remote_port,
+                                    check_n_call,
+                                    error_callback,
+                                    diagnostic).connectTCP(remote_host, 22)
+        df.addErrback(eb)
 
     reactor.addSystemEventTrigger("before", "shutdown", shutdown_callback)
 

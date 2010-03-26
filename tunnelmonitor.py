@@ -110,10 +110,9 @@ def get_new_tunnel(sauce_client, domains):
     return tunnel
 
 
-def heartbeat(name, key, base_url, tunnel_id, update_callback):
-    sauce_client = saucerest.SauceClient(name, key, base_url)
+def heartbeat(sauce_client, tunnel_id, update_callback):
     if sauce_client.is_tunnel_healthy(tunnel_id):
-        reactor.callLater(RETRY_TIME, heartbeat, name, key, base_url,
+        reactor.callLater(RETRY_TIME, heartbeat, sauce_client,
                           tunnel_id, update_callback)
     else:
         try:

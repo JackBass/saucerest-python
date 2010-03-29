@@ -144,6 +144,12 @@ def main(options, args, ports):
     local_host = args[2]
     domains = ",".join(args[4:]).split(",")
 
+    if options.daemonize:
+        # Do this up front rather than erroring out much later when we
+        # try to daemonize.  This function does sys.exit if there's
+        # another server running with the given pidfile.
+        daemon.checkPID(options.pidfile)
+
     if options.diagnostic:
         run_diagnostic(domains, ports, local_host)
 

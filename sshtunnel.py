@@ -26,6 +26,7 @@
 import logging
 
 from twisted.internet import defer, protocol, reactor, task
+from twisted.internet.error import ConnectionDone, ConnectionLost
 from twisted.conch.error import ConchError
 from twisted.conch.ssh import (
     connection, channel, userauth, transport, forwarding)
@@ -78,10 +79,15 @@ class TunnelTransport(transport.SSHClientTransport):
             self.error_callback()
 
     def connectionLost(self, reason):
-        logger.warning('SSH connection lost, reason: %s',
-                       reason)
-        if self.error_callback:
-            self.error_callback()
+        if isinstance(reason.value, ConnectionDone):
+            logger.info('SSH connection lost, got ConnectionDone, ignoring')
+        elif isinstance(reason.value, ConnectionLost):
+            logger.warning('SSH connection lost, got ConnectionLost, ignoring')
+        else:
+            logger.warning('SSH connection lost, reason: %s',
+                           reason)
+            if self.error_callback:
+                self.error_callback()
 
 
 class TunnelUserAuth(userauth.SSHUserAuthClient):

@@ -119,7 +119,7 @@ def heartbeat(sauce_client, tunnel_id, update_callback):
             tunnel = sauce_client.get_tunnel(tunnel_id)
         except saucerest.SauceRestError, e:
             logger.critical("Unable to connect to REST interface at %s: %s"
-                            % (base_url, e))
+                            % (sauce_client.base_url, e))
             if reactor.running:
                 reactor.stop()
             sys.exit(1)

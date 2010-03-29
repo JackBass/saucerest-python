@@ -170,28 +170,27 @@ class SauceClient:
 
     # -- Tunnel utilities
 
-    def _is_ssh_host_up(self, host, port=22, timeout=10):
+    def _is_ssh_host_up(self, host, port=22, timeout=10, connect_tries=3):
         """Return whether we receive the SSH string from the host port."""
-        socket.setdefaulttimeout(timeout)  # timeout in secs
 
-        sock = socket.socket()
-        try:
-            # these block until timeout
-            sock.connect((host, port))
-            data = sock.recv(4096)
-        except socket.timeout:
-            logger.warning("Socket timed out trying to connect to SSH host")
-            return False
-        except socket.error, err:
-            logger.error("Socket error when trying to connect to SSH host: %s"
-                         % err)
-            return False
-
-        if data:
-            return data.startswith("SSH-")
-        else:
-            logger.error("Got unexpected data from SSH server: '%s'" % data)
-            return False
+        for i in xrange(connect_tries):
+            sock = socket.socket()
+            sock.settimeout(timeout) # timeout in secs
+            try:
+                # these block until timeout
+                sock.connect((host, port))
+                data = sock.recv(4096)
+            except socket.timeout:
+                logger.warning("Socket timed out trying to connect to SSH host")
+            except socket.error, err:
+                logger.error("Socket error when trying to connect to SSH host: %s"
+                             % err)
+            else:
+                if data:
+                    return data.startswith("SSH-")
+                else:
+                    logger.error("Got unexpected data from SSH server: '%s'" % data)
+                    return False
 
 
     def is_tunnel_healthy(self, tunnel_id):

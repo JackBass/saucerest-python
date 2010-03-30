@@ -74,7 +74,10 @@ def _get_running_tunnel(sauce_client, tunnel_id):
     return None
 
 
-def get_new_tunnel(sauce_client, domains, max_tries=None):
+def get_new_tunnel(sauce_client, domains, replace=True, max_tries=None):
+    if replace:
+        sauce_client.delete_tunnels_by_domains(domains)
+
     tunnel = None
     tries = 0
     while not tunnel:
@@ -114,6 +117,7 @@ def heartbeat(sauce_client, tunnel_id, update_callback, max_tries=None):
         reactor.callLater(RETRY_TIME, heartbeat, sauce_client,
                           tunnel_id, update_callback)
     else:
+        running = False
         tries = 0
         while True:
             tries += 1
@@ -123,6 +127,10 @@ def heartbeat(sauce_client, tunnel_id, update_callback, max_tries=None):
                 if 'UserShutDown' in tunnel:
                     _do_user_shutdown(sauce_client, tunnel_id)
                     return
+
+                if tunnel['Status'] == "running":
+                    running = True
+                    break
 
                 logger.info("Tunnel is down")
                 sauce_client.delete_tunnel(tunnel_id)
@@ -141,6 +149,7 @@ def heartbeat(sauce_client, tunnel_id, update_callback, max_tries=None):
                 time.sleep(RETRY_TIME)
             else:
                 break
+
 
         logger.info("Replacing tunnel")
         new_tunnel = get_new_tunnel(sauce_client, tunnel['DomainNames'])

@@ -160,17 +160,6 @@ def main(options, args, ports):
         logger.error("Exiting: Incorrect username or access key")
         sys.exit(1)
 
-    if options.shutdown:
-        logger.info(
-            "Searching for existing tunnels using requested domains ...")
-        for tunnel in sauce_client.list_tunnels():
-            for domain in (d for d in domains if d in tunnel['DomainNames']):
-                logger.warning("Tunnel %s is currenty using requested"
-                               " domain %s" % (tunnel['_id'], domain))
-                logger.info("Shutting down tunnel %s" % tunnel['_id'])
-                sauce_client.delete_tunnel(tunnel['_id'])
-
-
     def disconnected_callback(tunnel_id):
         logger.warning("tunnel %s disconnected, marking unhealthy", tunnel_id)
         sauce_client.unhealthy_tunnels.add(tunnel_id)
@@ -181,13 +170,14 @@ def main(options, args, ports):
         sshtunnel.connect_tunnel(
             tunnel_id, sauce_client.base_url, username, access_key, local_host,
             new_tunnel['Host'], ports, connected_callback,
-            lambda: disconnected_callback(tunnel_id),
-            lambda: sauce_client.delete_tunnel(tunnel_id),
+            lambda t=tunnel_id: disconnected_callback(t),
+            lambda t=tunnel_id: sauce_client.delete_tunnel(t),
             options.diagnostic)
         heartbeat(sauce_client, tunnel_id, tunnel_change_callback)
 
     try:
-        tunnel = get_new_tunnel(sauce_client, domains)
+        tunnel = get_new_tunnel(sauce_client, domains,
+                                replace=options.shutdown)
         connect_tunnel(options, tunnel, tunnel_change_callback)
         reactor.run()
     finally:

@@ -33,7 +33,7 @@ from twisted.internet import reactor
 
 import saucerest
 import sshtunnel
-from tunnelmonitor import get_new_tunnel, heartbeat
+from tunnelmonitor import get_new_tunnel, Heartbeat
 
 logger = logging.getLogger("tunnel")
 
@@ -173,13 +173,16 @@ def main(options, args, ports):
             lambda t=tunnel_id: disconnected_callback(t),
             lambda t=tunnel_id: sauce_client.delete_tunnel(t),
             options.diagnostic)
-        heartbeat(sauce_client, tunnel_id, tunnel_change_callback)
 
     try:
         tunnel = get_new_tunnel(sauce_client, domains,
                                 replace=options.shutdown)
         connect_tunnel(options, tunnel, tunnel_change_callback)
+        h = Heartbeat(sauce_client, tunnel_id, tunnel_change_callback)
+        h.start()
         reactor.run()
+        h.done = True
+        h.join()
     finally:
         logger.warning("Exiting")
         sauce_client.delete_tunnel(tunnel_id)

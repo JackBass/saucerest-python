@@ -25,6 +25,7 @@
 import sys
 import time
 import logging
+import threading
 
 from twisted.internet import reactor
 
@@ -124,48 +125,67 @@ def exc_to_const(f, exc=Exception, const=False):
     return inner
 
 
-def heartbeat(sauce_client, tunnel_id, update_callback, max_tries=None):
-    if exc_to_const(sauce_client.is_tunnel_healthy)(tunnel_id):
-        reactor.callLater(RETRY_TIME, heartbeat, sauce_client,
-                          tunnel_id, update_callback)
-    else:
-        running = False
-        tries = 0
-        while True:
-            tries += 1
+class Heartbeat(threading.Thread):
+    def __init__(self, sauce_client, tunnel_id, update_callback,
+                 max_tries=None):
+        threading.Thread.__init__(self)
+        self.sauce_client = sauce_client
+        self.tunnel_id = tunnel_id
+        self.update_callback = update_callback
+        self.max_tries = max_tries
+        self.done = False
+        self.interval = RETRY_TIME
+
+    def run(self):
+        while not self.done:
             try:
-                tunnel = sauce_client.get_tunnel(tunnel_id)
+                self.heartbeat()
+            except Exception, e:
+                logger.error("Error in heartbeat: %s %s", type(e), str(e))
+            time.sleep(self.interval)
 
-                if 'UserShutDown' in tunnel:
-                    _do_user_shutdown(sauce_client, tunnel_id)
-                    return
+    def heartbeat(self):
+        is_tunnel_healthy = exc_to_const(self.sauce_client.is_tunnel_healthy)
+        if not is_tunnel_healthy(self.tunnel_id):
+            running = False
+            tries = 0
+            while not self.done:
+                tries += 1
+                try:
+                    tunnel = self.sauce_client.get_tunnel(self.tunnel_id)
 
-                if tunnel['Status'] == "running":
-                    running = True
+                    if 'UserShutDown' in tunnel:
+                        _do_user_shutdown(self.sauce_client, self.tunnel_id)
+                        return
+
+                    if tunnel['Status'] == "running":
+                        running = True
+                        break
+
+                    logger.info("Tunnel is down")
+                    self.sauce_client.delete_tunnel(self.tunnel_id)
+                except saucerest.SauceRestError, e:
+                    logger.critical(
+                        "Unable to connect to REST interface at %s: %s",
+                        self.sauce_client.base_url, e)
+
+                    if self.max_tries and tries >= self.max_tries:
+                        logger.critical("Exceeded max retries, giving up")
+                        if reactor.running:
+                            reactor.stop()
+                        else:
+                            sys.exit(1)
+
+                    time.sleep(RETRY_TIME)
+                else:
                     break
 
-                logger.info("Tunnel is down")
-                sauce_client.delete_tunnel(tunnel_id)
-            except saucerest.SauceRestError, e:
-                logger.critical(
-                    "Unable to connect to REST interface at %s: %s",
-                    sauce_client.base_url, e)
 
-                if max_tries and tries >= max_tries:
-                    logger.critical("Exceeded max retries, giving up")
-                    if reactor.running:
-                        reactor.stop()
-                    else:
-                        sys.exit(1)
+            logger.info("Replacing tunnel")
+            new_tunnel = get_new_tunnel(self.sauce_client,
+                                        tunnel['DomainNames'])
+            self.tunnel_id = new_tunnel['id']
 
-                time.sleep(RETRY_TIME)
-            else:
-                break
-
-
-        logger.info("Replacing tunnel")
-        new_tunnel = get_new_tunnel(sauce_client, tunnel['DomainNames'])
-
-        if update_callback:
-            new_tunnel = sauce_client.get_tunnel(new_tunnel['id'])
-            update_callback(new_tunnel)
+            if self.update_callback:
+                new_tunnel = self.sauce_client.get_tunnel(self.tunnel_id)
+                reactor.callFromThread(self.update_callback, new_tunnel)

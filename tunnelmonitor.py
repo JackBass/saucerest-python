@@ -57,7 +57,7 @@ def _get_running_tunnel(sauce_client, tunnel_id):
             "Tunnel info should have same ID as the one requested"
 
         if tunnel['Status'] != last_status:
-            logger.info("Status: %s" % tunnel['Status'])
+            logger.info("Status: %s", tunnel['Status'])
             last_status = tunnel['Status']
 
         if tunnel['Status'] == "running":
@@ -70,28 +70,27 @@ def _get_running_tunnel(sauce_client, tunnel_id):
             return None
         time.sleep(RETRY_TIME)
 
-    logger.warning("Timed out after waiting ~%ds for running tunnel" % TIMEOUT)
+    logger.warning("Timed out after waiting ~%ds for running tunnel", TIMEOUT)
     return None
 
 
-def get_new_tunnel(sauce_client, domains):
-    max_tries = 5
+def get_new_tunnel(sauce_client, domains, max_tries=None):
     tunnel = None
-    tried = 0
+    tries = 0
     while not tunnel:
-        trymsg=("", " (try #%d)" % (tried + 1))[bool(tried)]
-        logger.info("Launching tunnel ...%s" % trymsg)
+        tries += 1
+        trymsg = ("(try #%d)" % tries) if tries > 1 else ""
+        logger.info("Launching tunnel ... %s", trymsg)
         try:
             tunnel = sauce_client.create_tunnel({'DomainNames': domains})
         except saucerest.SauceRestError, e:
             tunnel = dict(
                 error="Unable to connect to REST interface: %s" % str(e))
-        tried += 1
         if 'error' in tunnel:
-            logger.warning("Tunnel error: %s" % tunnel['error'])
-            if tried >= max_tries:
+            logger.warning("Tunnel error: %s", tunnel['error'])
+            if max_tries and tries >= max_tries:
                 logger.error("Exiting: Could not launch tunnel"
-                             " (tried %d times)" % tried)
+                             " (tries %d times)", tries)
                 if reactor.running:
                     reactor.stop()
                 else:
@@ -105,31 +104,44 @@ def get_new_tunnel(sauce_client, domains):
                 logger.error("Created tunnel, but could not retrieve info")
                 tunnel = None
 
-    logger.info("Tunnel host: %s" % tunnel['Host'])
-    logger.info("Tunnel ID: %s" % tunnel['id'])
+    logger.info("Tunnel host: %s", tunnel['Host'])
+    logger.info("Tunnel ID: %s", tunnel['id'])
     return tunnel
 
 
-def heartbeat(sauce_client, tunnel_id, update_callback):
+def heartbeat(sauce_client, tunnel_id, update_callback, max_tries=None):
     if sauce_client.is_tunnel_healthy(tunnel_id):
         reactor.callLater(RETRY_TIME, heartbeat, sauce_client,
                           tunnel_id, update_callback)
     else:
-        try:
-            tunnel = sauce_client.get_tunnel(tunnel_id)
-        except saucerest.SauceRestError, e:
-            logger.critical("Unable to connect to REST interface at %s: %s"
-                            % (sauce_client.base_url, e))
-            if reactor.running:
-                reactor.stop()
-            sys.exit(1)
+        tries = 0
+        while True:
+            tries += 1
+            try:
+                tunnel = sauce_client.get_tunnel(tunnel_id)
 
-        if 'UserShutDown' in tunnel:
-            _do_user_shutdown(sauce_client, tunnel_id)
-            return
+                if 'UserShutDown' in tunnel:
+                    _do_user_shutdown(sauce_client, tunnel_id)
+                    return
 
-        logger.info("Tunnel is down")
-        sauce_client.delete_tunnel(tunnel_id)
+                logger.info("Tunnel is down")
+                sauce_client.delete_tunnel(tunnel_id)
+            except saucerest.SauceRestError, e:
+                logger.critical(
+                    "Unable to connect to REST interface at %s: %s",
+                    sauce_client.base_url, e)
+
+                if max_tries and tries >= max_tries:
+                    logger.critical("Exceeded max retries, giving up")
+                    if reactor.running:
+                        reactor.stop()
+                    else:
+                        sys.exit(1)
+
+                time.sleep(RETRY_TIME)
+            else:
+                break
+
         logger.info("Replacing tunnel")
         new_tunnel = get_new_tunnel(sauce_client, tunnel['DomainNames'])
 

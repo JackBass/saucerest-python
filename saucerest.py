@@ -196,11 +196,17 @@ class SauceClient:
                 logger.error("Socket error when trying to connect to SSH host: %s"
                              % err)
             else:
-                if data:
-                    return data.startswith("SSH-")
+                if data and data.startswith("SSH-"):
+                    if i:
+                        logger.error("SSH health check succeeded (%s/%s)", i,
+                                     connect_tries)
+                    return True
                 else:
                     logger.error("Got unexpected data from SSH server: '%s'" % data)
                     return False
+            if i+1 < connect_tries:
+                logger.error("Retrying SSH health check (%s/%s)", i+1,
+                             connect_tries)
 
 
     def is_tunnel_healthy(self, tunnel_id):

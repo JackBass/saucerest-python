@@ -168,6 +168,16 @@ class SauceClient:
     def delete_tunnel(self, tunnel_id):
         return self.delete('tunnels', tunnel_id)
 
+    def delete_tunnels_by_domains(self, domains):
+        logger.info(
+            "Searching for existing tunnels using requested domains ...")
+        for tunnel in self.list_tunnels():
+            for domain in (d for d in domains if d in tunnel['DomainNames']):
+                logger.warning("Tunnel %s is currenty using requested"
+                               " domain %s" % (tunnel['_id'], domain))
+                logger.info("Shutting down tunnel %s" % tunnel['_id'])
+                self.delete_tunnel(tunnel['_id'])
+
     # -- Tunnel utilities
 
     def _is_ssh_host_up(self, host, port=22, timeout=10, connect_tries=3):

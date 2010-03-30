@@ -112,8 +112,20 @@ def get_new_tunnel(sauce_client, domains, replace=True, max_tries=None):
     return tunnel
 
 
+def exc_to_const(f, exc=Exception, const=False):
+    def inner(*a, **k):
+        try:
+            return f(*a, **k)
+        except exc:
+            return const
+
+    inner.__name__ = f.__name__
+    inner.__doc__ = f.__doc__
+    return inner
+
+
 def heartbeat(sauce_client, tunnel_id, update_callback, max_tries=None):
-    if sauce_client.is_tunnel_healthy(tunnel_id):
+    if exc_to_const(sauce_client.is_tunnel_healthy)(tunnel_id):
         reactor.callLater(RETRY_TIME, heartbeat, sauce_client,
                           tunnel_id, update_callback)
     else:

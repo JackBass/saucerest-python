@@ -75,15 +75,16 @@ def _get_running_tunnel(sauce_client, tunnel_id):
     return None
 
 
-def get_new_tunnel(sauce_client, domains, replace=True, max_tries=None):
-    if replace:
-        sauce_client.delete_tunnels_by_domains(domains)
-
+def get_new_tunnel(sauce_client, domains, replace=True, max_tries=1000):
     tunnel = None
     tries = 0
     while not tunnel:
         tries += 1
         trymsg = ("(try #%d)" % tries) if tries > 1 else ""
+
+        if replace:
+            sauce_client.delete_tunnels_by_domains(domains)
+
         logger.info("Launching tunnel ... %s", trymsg)
         try:
             tunnel = sauce_client.create_tunnel({'DomainNames': domains})
@@ -127,7 +128,7 @@ def exc_to_const(f, exc=Exception, const=False):
 
 class Heartbeat(threading.Thread):
     def __init__(self, sauce_client, tunnel_id, update_callback,
-                 max_tries=None):
+                 max_tries=1000):
         threading.Thread.__init__(self)
         self.sauce_client = sauce_client
         self.tunnel_id = tunnel_id

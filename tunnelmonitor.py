@@ -146,6 +146,7 @@ class Heartbeat(threading.Thread):
 
     def heartbeat(self):
         is_tunnel_healthy = exc_to_const(self.sauce_client.is_tunnel_healthy)
+        self.sauce_client.prune_unhealthy_tunnels([self.tunnel_id])
         if not is_tunnel_healthy(self.tunnel_id):
             running = False
             tries = 0
@@ -180,6 +181,8 @@ class Heartbeat(threading.Thread):
                 else:
                     break
 
+            if self.done:
+                return
 
             logger.info("Replacing tunnel")
             new_tunnel = get_new_tunnel(self.sauce_client,

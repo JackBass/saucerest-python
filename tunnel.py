@@ -122,17 +122,11 @@ def run_diagnostic(domains, ports, local_host):
 
 
 def connect_tunnel(options, tunnel, tunnel_change_callback):
-    def daemonize():
-        daemon.daemonize(options.pidfile)
-        if drop_readyfile: drop_readyfile()
-
     drop_readyfile = None
     if options.readyfile:
         drop_readyfile = lambda : open(options.readyfile, 'wb').write("ready")
 
-    if options.daemonize:
-        tunnel_change_callback(tunnel, connected_callback=daemonize)
-    elif drop_readyfile:
+    if drop_readyfile:
         tunnel_change_callback(tunnel, connected_callback=drop_readyfile)
     else:
         tunnel_change_callback(tunnel)
@@ -145,10 +139,7 @@ def main(options, args, ports):
     domains = ",".join(args[4:]).split(",")
 
     if options.daemonize:
-        # Do this up front rather than erroring out much later when we
-        # try to daemonize.  This function does sys.exit if there's
-        # another server running with the given pidfile.
-        daemon.checkPID(options.pidfile)
+        daemon.daemonize(options.pidfile)
 
     if options.diagnostic:
         run_diagnostic(domains, ports, local_host)
@@ -181,6 +172,7 @@ def main(options, args, ports):
         h = Heartbeat(sauce_client, tunnel_id, tunnel_change_callback)
         h.start()
         reactor.run()
+        logger.warning("Reactor stopped")
         h.done = True
         h.join()
     finally:

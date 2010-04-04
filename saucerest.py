@@ -201,9 +201,8 @@ class SauceClient:
                         logger.error("SSH health check succeeded (%s/%s)", i,
                                      connect_tries)
                     return True
-                else:
-                    logger.error("Got unexpected data from SSH server: '%s'" % data)
-                    return False
+                logger.error("Got unexpected data from SSH server: '%s'" % data)
+                return False
             if i+1 < connect_tries:
                 logger.error("Retrying SSH health check (%s/%s)", i+1,
                              connect_tries)
@@ -224,3 +223,6 @@ class SauceClient:
                 "Tunnel has non-running status '%s'" % tunnel['Status'])
             return False
         return self._is_ssh_host_up(tunnel['Host'])
+
+    def prune_unhealthy_tunnels(self, tunnels_of_concern):
+        self.unhealthy_tunnels.intersection_update(tunnels_of_concern)

@@ -166,8 +166,12 @@ def main(options, args, ports):
             options.diagnostic)
 
     try:
+        max_tries = 1000
+        if not options.shutdown:
+            max_tries = 1
         tunnel = get_new_tunnel(sauce_client, domains,
-                                replace=options.shutdown)
+                                replace=options.shutdown,
+                                max_tries=max_tries)
         connect_tunnel(options, tunnel, tunnel_change_callback)
         h = Heartbeat(sauce_client, tunnel_id, tunnel_change_callback)
         h.start()

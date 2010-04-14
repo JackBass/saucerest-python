@@ -83,6 +83,8 @@ def get_new_tunnel(sauce_client, domains, replace=True, max_tries=1000):
         trymsg = ("(try #%d)" % tries) if tries > 1 else ""
 
         if replace:
+            logger.info("replacing any existing tunnels with domains in %s",
+                        domains)
             sauce_client.delete_tunnels_by_domains(domains)
 
         logger.info("Launching tunnel ... %s", trymsg)

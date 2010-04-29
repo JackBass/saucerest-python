@@ -37,6 +37,13 @@ class SauceRestError(Exception):
     pass
 
 
+def _loads(json):
+    try:
+        return simplejson.loads(json)
+    except:
+        raise SauceRestError("Invalid JSON response: %s", json)
+
+
 class SauceClient:
     """Basic wrapper class for operations with Sauce"""
 
@@ -85,13 +92,13 @@ class SauceClient:
         if attachment:
             return content
         else:
-            return simplejson.loads(content)
+            return _loads(content)
 
     def list(self, type):
         headers = {"Content-Type": "application/json"}
         url = self.base_url + "/rest/%s/%s" % (self.account_name, type)
         response, content = self._http_request(url, 'GET', headers=headers)
-        return simplejson.loads(content)
+        return _loads(content)
 
     def create(self, type, body):
         headers = {"Content-Type": "application/json"}
@@ -101,13 +108,13 @@ class SauceClient:
                                               'POST',
                                               body=body,
                                               headers=headers)
-        return simplejson.loads(content)
+        return _loads(content)
 
     def attach(self, doc_id, name, body):
         url = self.base_url + "/rest/%s/scripts/%s/%s" % (self.account_name,
                                                           doc_id, name)
         response, content = self._http_request(url, 'PUT', body=body)
-        return simplejson.loads(content)
+        return _loads(content)
 
     def delete(self, type, doc_id):
         headers = {"Content-Type": "application/json"}
@@ -115,7 +122,7 @@ class SauceClient:
                                                   type,
                                                   doc_id)
         response, content = self._http_request(url, 'DELETE', headers=headers)
-        return simplejson.loads(content)
+        return _loads(content)
 
     #------ Sauce-specific objects ------
 
